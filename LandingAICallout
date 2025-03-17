@@ -1,0 +1,63 @@
+public class LandingAICallout {
+    public static void sendPDFToLandingAI(String contentVersionId) {
+        try {
+            
+            // Step 1: Retrieve the PDF from ContentVersion
+            ContentVersion cv = [
+                SELECT Id, Title, VersionData 
+                FROM ContentVersion 
+                WHERE Id = :contentVersionId 
+                LIMIT 1
+            ];
+            Blob pdfBlob = cv.VersionData;
+            
+            // Step 2: Prepare the HTTP request
+            HttpRequest req = new HttpRequest();
+            req.setEndpoint('https://api.va.landing.ai/v1/tools/agentic-document-analysis');
+            req.setMethod('POST');
+            req.setHeader('Authorization', 'Basic a2RwbXRqb2hvanVmYzd2c3ljemk4OnZOazcxTHlzc1BRZzcyclFXdFIydmVWVTFqeWMxMHFX');
+            
+            // Use the same boundary as in your Postman request
+			String boundary = 'boundary' + String.valueOf(DateTime.now().getTime());
+            req.setHeader('Content-Type', 'multipart/form-data; boundary=' + boundary);
+            
+            // Step 3: Build header and footer strings for the multipart body
+            String header = '--' + boundary + '\r\n'
+                          + 'Content-Disposition: form-data; name="pdf"; filename="' + cv.Title + '.pdf"\r\n'
+                          + 'Content-Type: application/pdf\r\n\r\n';
+            
+            // Add parameters from the error message
+            String paramsHeader = '--' + boundary + '\r\n'
+                                + 'Content-Disposition: form-data; name="include_marginalia"\r\n\r\n'
+                                + 'true\r\n'
+                                + '--' + boundary + '\r\n'
+                                + 'Content-Disposition: form-data; name="include_metadata_in_markdown"\r\n\r\n'
+                                + 'true\r\n';
+            header = paramsHeader + header;
+            String footer = '\r\n--' + boundary + '--\r\n';
+            
+            // Step 4: Convert header, PDF, and footer to Blobs
+            Blob headerBlob = Blob.valueOf(header);
+            Blob footerBlob = Blob.valueOf(footer);
+            
+            // Convert each Blob into a hex string and then concatenate
+            String headerHex = EncodingUtil.convertToHex(headerBlob);
+            String pdfHex = EncodingUtil.convertToHex(pdfBlob);
+            String footerHex = EncodingUtil.convertToHex(footerBlob);
+            String combinedHex = headerHex + pdfHex + footerHex;
+            Blob finalBody = EncodingUtil.convertFromHex(combinedHex);
+            req.setBodyAsBlob(finalBody);
+            req.setTimeout(120000); // Set timeout to 2 minutes
+            
+            // Step 5: Send the request
+            Http http = new Http();
+            HttpResponse res = http.send(req);
+            System.debug('Response Code: ' + res.getStatusCode());
+            System.debug('Response Body: ' + res.getBody());
+        } catch(Exception e) {
+            System.debug('Error: ' + e.getMessage());
+            System.debug('Error Line: ' + e.getLineNumber());
+            System.debug('Error Stack: ' + e.getStackTraceString());
+        }
+    }
+}
